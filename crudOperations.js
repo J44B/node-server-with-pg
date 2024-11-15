@@ -1,46 +1,119 @@
 // Import utility functions
-import { getResourceId, processBodyFromRequest, returnErrorWithMessage } from './utils.js';
+import {
+    getResourceId,
+    processBodyFromRequest,
+    returnErrorWithMessage,
+} from './utils.js';
+
+import pg from 'pg';
+
+const { Client } = pg;
 
 export const createPost = async (req, res) => {
-  try {
-    const body = await processBodyFromRequest(req);
-    if (!body) return returnErrorWithMessage(res, 400, 'Body is required');
-    const parsedBody = JSON.parse(body);
-    console.log('Here we have access to the body: ', parsedBody);
-    res.statusCode = 201;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ message: 'Post created' }));
-  } catch (error) {
-    returnErrorWithMessage(res);
-  }
+    try {
+        const body = await processBodyFromRequest(req);
+        if (!body) return returnErrorWithMessage(res, 400, 'Body is required');
+        const parsedBody = JSON.parse(body);
+        const client = new Client({
+            connectionString: process.env.PG_URI,
+        });
+        await client.connect();
+        const results = await client.query(
+            'INSERT INTO posts (title, author, content) VALUES ($1, $2, $3) RETURNING *;',
+            [parsedBody.title, parsedBody.author, parsedBody.content]
+        );
+        await client.end();
+        res.statusCode = 201;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ message: 'Post created' }));
+    } catch (error) {
+        returnErrorWithMessage(res);
+    }
 };
 
-export const getPosts = (req, res) => {
-  res.statusCode = 200;
-  res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify({ message: 'Posts fetched' }));
+export const getPosts = async (req, res) => {
+    try {
+        const client = new Client({
+            connectionString: process.env.PG_URI,
+        });
+        await client.connect();
+        const results = await client.query('SELECT * FROM posts;'); // Select from the right table
+        await client.end();
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(results.rows)); // Return the rows array
+    } catch (error) {
+        console.error('Error fetching posts: ', error);
+    }
 };
 
-export const getPostById = (req, res) => {
-  const id = getResourceId(req.url);
-  console.log('Here we have access to the ID: ', id);
-  res.statusCode = 200;
-  res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify({ message: 'Post fetched' }));
+export const getPostById = async (req, res) => {
+    try {
+        const id = getResourceId(req.url);
+        const client = new Client({
+            connectionString: process.env.PG_URI,
+        });
+        await client.connect();
+        const results = await client.query(
+            'SELECT * FROM posts WHERE id =' + id + ';'
+            // `SELECT * FROM posts Where id = ${id};`
+        );
+        await client.end();
+        if (!results.rowCount)
+            return returnErrorWithMessage(res, 404, 'Post not found');
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(results.rows[0]));
+    } catch (error) {
+        console.error('Error fetching post: ', error);
+        returnErrorWithMessage(res);
+    }
 };
 
-export const updatePost = (req, res) => {
-  const id = getResourceId(req.url);
-  console.log('Here we have access to the ID: ', id);
-  res.statusCode = 200;
-  res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify({ message: 'Post updated' }));
+export const updatePost = async (req, res) => {
+    try {
+        const id = getResourceId(req.url);
+        const body = await processBodyFromRequest(req);
+        if (!body) returnErrorWithMessage(res, 400, 'Body is required');
+        const parsedBody = JSON.parse(body);
+        const client = new Client({
+            connectionString: process.env.PG_URI,
+        });
+        await client.connect();
+        const results = await client.query(
+            'UPDATE posts SET title = $1, author = $2, content = $3 WHERE id = $4 RETURNING *;',
+            [parsedBody.title, parsedBody.author, parsedBody.content, id]
+        );
+        await client.end();
+        if (!results.rowCount)
+            return returnErrorWithMessage(res, 404, 'Post not found');
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(results.rows[0]));
+    } catch (error) {
+        console.error('Error fetching post: ', error);
+        returnErrorWithMessage(res);
+    }
 };
 
-export const deletePost = (req, res) => {
-  const id = getResourceId(req.url);
-  console.log('Here we have access to the ID: ', id);
-  res.statusCode = 200;
-  res.setHeader('Content-Type', 'application/json');
-  res.end(JSON.stringify({ message: 'Post deleted' }));
+export const deletePost = async (req, res) => {
+    try {
+        const id = getResourceId(req.url);
+        const client = new Client({
+            connectionString: process.env.PG_URI,
+        });
+        await client.connect();
+        const results = await client.query(
+            'DELETE FROM posts WHERE id =' + id + ';'
+        );
+        await client.end();
+        if (!results.rowCount)
+            return returnErrorWithMessage(res, 404, 'Post not found');
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ message: 'Post deleted' }));
+    } catch (error) {
+        console.error('Error deleting post: ', error);
+        returnErrorWithMessage(res);
+    }
 };
